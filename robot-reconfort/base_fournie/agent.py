@@ -5,6 +5,8 @@ class Robot:
         self.hauteur = donnees_carte["dimensions"]["hauteur"]
         self.largeur = donnees_carte["dimensions"]["largeur"]
         self.position_armoire = donnees_carte["armoire"]["position"]
+
+        self.vraie_grille_secrete = donnees_carte["grille"]
         
         # BLOC 2 : Création de la carte mentale (cerveau vierge)
         self.memoire_robot = {}
@@ -87,3 +89,41 @@ class Robot:
         chemin.reverse()
         
         return chemin
+
+
+    def lancer_mission(self):
+        # Tant qu'on n'est pas arrivé à l'armoire
+        while self.position != self.position_armoire:
+            
+            # 1. Le robot calcule son trajet idéal
+            chemin = self.calculer_chemin(self.position, self.position_armoire)
+            
+            # 2. Il repère la case de son tout premier pas
+            prochaine_case = chemin[1] 
+            
+            # 3. Il tente d'avancer via notre maître du jeu interne
+            resultat = self.simuler_un_pas(prochaine_case)
+            
+            # 4. L'apprentissage
+            if resultat == "mur":
+                self.memoire_robot[str(prochaine_case)] = "mur"
+                continue # redemarre la boucle while 
+            else:
+                self.position = prochaine_case
+                print(f"Le robot avance sur la case {self.position}")
+                
+        print("L'armoire a été trouvée !")
+
+
+
+    def simuler_un_pas(self, prochaine_case):
+            ligne = prochaine_case[0]
+            colonne = prochaine_case[1]
+        
+        # On vérifie la vraie nature de la case dans la grille secrète
+            contenu_case = self.vraie_grille_secrete[ligne][colonne]
+        
+            if contenu_case == "mur":
+                return "mur"
+            else:
+                return "ok"
