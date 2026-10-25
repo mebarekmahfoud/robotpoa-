@@ -1,3 +1,6 @@
+from analyseur import AnalyseurLinguistique
+
+
 class Robot:
     def __init__(self, donnees_carte):
         # BLOC 1 : Extraction des données du JSON
@@ -7,6 +10,10 @@ class Robot:
         self.position_armoire = donnees_carte["armoire"]["position"]
 
         self.vraie_grille_secrete = donnees_carte["grille"]
+
+        self.position_dictionnaire = donnees_carte["dictionnaire"]["position"]
+        # On crée un dictionnaire pratique pour retrouver la position d'un résident grâce à son ID (ex: "R1")
+        self.residents = {r["id"]: r["position"] for r in donnees_carte["residents"]}
         
         # BLOC 2 : Création de la carte mentale (cerveau vierge)
         self.memoire_robot = {}
@@ -91,29 +98,28 @@ class Robot:
         return chemin
 
 
-    def lancer_mission(self):
-        # Tant qu'on n'est pas arrivé à l'armoire
-        while self.position != self.position_armoire:
+    def aller_vers(self, destination):
+        # On calcule les 4 cases adjacentes à la cible
+        cases_cibles = self.obtenir_voisins(destination)
+        
+        # Tant que le robot n'est pas SUR l'une de ces 4 cases adjacentes
+        while self.position not in cases_cibles:
             
-            # 1. Le robot calcule son trajet idéal
-            chemin = self.calculer_chemin(self.position, self.position_armoire)
-            
-            # 2. Il repère la case de son tout premier pas
+            # On calcule le chemin vers le centre de la cible
+            chemin = self.calculer_chemin(self.position, destination)
             prochaine_case = chemin[1] 
             
-            # 3. Il tente d'avancer via notre maître du jeu interne
             resultat = self.simuler_un_pas(prochaine_case)
             
-            # 4. L'apprentissage
             if resultat == "mur":
                 self.memoire_robot[str(prochaine_case)] = "mur"
-                continue # redemarre la boucle while 
+                print(f"Aïe ! Mur découvert en {prochaine_case}, recalcul...")
+                continue
             else:
                 self.position = prochaine_case
                 print(f"Le robot avance sur la case {self.position}")
                 
-        print("L'armoire a été trouvée !")
-
+        print(f"Arrivé à côté de la cible {destination}, prêt à interagir !")
 
 
     def simuler_un_pas(self, prochaine_case):
@@ -123,7 +129,40 @@ class Robot:
         # On vérifie la vraie nature de la case dans la grille secrète
             contenu_case = self.vraie_grille_secrete[ligne][colonne]
         
-            if contenu_case == "mur":
+            if contenu_case == "#":
                 return "mur"
             else:
                 return "ok"
+
+if __name__ == "__main__":
+    import sys
+    import json
+    import os
+    
+    if len(sys.argv) < 5:
+        sys.exit(1)
+        
+    dossier_donnees = sys.argv[3]
+    chemin_dico = os.path.join(dossier_donnees, "dictionnaire.json")
+        
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        donnees_carte = json.load(f)
+    with open(sys.argv[2], "r", encoding="utf-8") as f:
+        donnees_scenario = json.load(f)
+    with open(chemin_dico, "r", encoding="utf-8") as f:
+        donnees_dico = json.load(f)
+
+    wall_e = Robot(donnees_carte)
+    analyseur = AnalyseurLinguistique(donnees_dico)
+
+    for demande in donnees_scenario["demandes"]:
+        id_resident = demande["resident"]
+        
+        print(f"\n=== Demande {demande['numero']} pour {id_resident} ===")
+        wall_e.aller_vers(wall_e.position_dictionnaire)
+        
+        emotion, intensite = analyseur.trouver_emotion(demande["message"])
+        print(f"-> Analyse du dictionnaire : Émotion = {emotion}, Intensité = {intensite}")
+        
+        wall_e.aller_vers(wall_e.position_armoire)
+        wall_e.aller_vers(wall_e.residents[id_resident])
