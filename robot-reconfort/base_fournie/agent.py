@@ -1,4 +1,8 @@
 from analyseur import AnalyseurLinguistique
+import unicodedata
+import re
+from analyseur import AnalyseurLinguistique
+from gestion_armoire import GestionnaireArmoire
 
 
 class Robot:
@@ -73,7 +77,7 @@ class Robot:
                 # La vérification in parents regarde si cette case possède déjà un parent.
                 #  Si oui, cela signifie que notre algorithme a déjà inondé cette case en venant d'un autre
                 #  chemin plus court. L'ignorer empêche le code de tourner en rond à l'infini 
-                # ou de revenir en arrière.             
+                # ou de revenir en arrière.            
                 deja_visite = voisin_str in parents
                 
                 if not est_un_mur and not deja_visite:
@@ -139,12 +143,15 @@ if __name__ == "__main__":
     import json
     import os
     
+    # --- EXPLICATION : Vérification des arguments du terminal ---
+    # Le programme exige exactement 4 arguments (script, carte, scenario, dossier_donnees, sortie)
     if len(sys.argv) < 5:
         sys.exit(1)
         
     dossier_donnees = sys.argv[3]
     chemin_dico = os.path.join(dossier_donnees, "dictionnaire.json")
         
+    # --- EXPLICATION : Chargement sécurisé des fichiers de configuration JSON ---
     with open(sys.argv[1], "r", encoding="utf-8") as f:
         donnees_carte = json.load(f)
     with open(sys.argv[2], "r", encoding="utf-8") as f:
@@ -152,17 +159,50 @@ if __name__ == "__main__":
     with open(chemin_dico, "r", encoding="utf-8") as f:
         donnees_dico = json.load(f)
 
+    # --- EXPLICATION : Récupération dynamique du meuble de stockage ---
+    # Le nom de l'armoire change selon les scénarios, on le lit directement dans le fichier scénario
+    nom_armoire = donnees_scenario["armoire"] 
+    chemin_armoire = os.path.join(dossier_donnees, f"{nom_armoire}.json")
+    with open(chemin_armoire, "r", encoding="utf-8") as f:
+        donnees_armoire = json.load(f)
+
+    # --- EXPLICATION : Instanciation des trois composants de l'architecture ---
+    # Le Robot gère le déplacement, l'Analyseur traite le texte, et le Gestionnaire gère l'armoire
     wall_e = Robot(donnees_carte)
     analyseur = AnalyseurLinguistique(donnees_dico)
+    armoire = GestionnaireArmoire(donnees_armoire)
 
+    # --- EXPLICATION : Boucle principale d'exécution des missions du scénario ---
     for demande in donnees_scenario["demandes"]:
         id_resident = demande["resident"]
         
         print(f"\n=== Demande {demande['numero']} pour {id_resident} ===")
+        
+        # Étape 1 : Le robot navigue jusqu'au dictionnaire pour lire la détresse du résident
         wall_e.aller_vers(wall_e.position_dictionnaire)
         
+        # L'analyseur externe traduit le message textuel en une émotion et une intensité normalisées
         emotion, intensite = analyseur.trouver_emotion(demande["message"])
-        print(f"-> Analyse du dictionnaire : Émotion = {emotion}, Intensité = {intensite}")
+        print(f"-> Analyse : Émotion = {emotion}, Intensité = {intensite}")
         
+        # Étape 2 : Le robot se déplace ensuite physiquement devant l'armoire de stockage
         wall_e.aller_vers(wall_e.position_armoire)
+        
+        if emotion != "emotion indeterminee":
+            # On interroge le gestionnaire d'armoire pour obtenir la liste ordonnée des casiers prioritaires (Roue de Plutchik)
+            tiroirs_a_verifier = armoire.trier_candidats(emotion, intensite)
+            
+            # On sélectionne le meilleur casier (le premier de la liste de priorité)
+            meilleur_tiroir = tiroirs_a_verifier[0]
+            
+            # On calcule la trajectoire géométrique du bras mécanique (avec bouclage toroïdal horizontal)
+            mouvements = armoire.calculer_deplacements(armoire.position_selecteur, meilleur_tiroir)
+            print(f"-> Fouille : Le bras se déplace vers {meilleur_tiroir} avec les mouvements {mouvements}")
+            
+            # On met à jour la position actuelle du sélecteur pour qu'il s'en souvienne lors de la prochaine demande
+            armoire.position_selecteur = meilleur_tiroir
+        else:
+            print("-> Fouille : Impossible, émotion indéterminée.")
+        
+        # Étape 3 : Enfin, le robot quitte l'armoire pour aller livrer l'objet de réconfort au résident concerné
         wall_e.aller_vers(wall_e.residents[id_resident])
