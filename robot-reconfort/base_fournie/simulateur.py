@@ -1,7 +1,8 @@
 import reconfort_io as rio
 
+
 class Simulateur:
-    """Représente l'environnement réel. Seul autorisé à lire 'grille' et 'objet'."""
+    """Gère le monde réel, calcule les perceptions locales et enregistre la trace."""
 
     TRADUCTION_CASE = {
         "#": "mur",
@@ -27,12 +28,10 @@ class Simulateur:
         }
         self.pos_robot = list(donnees_carte["depart_robot"])
         self.pos_armoire = list(donnees_carte["armoire"]["position"])
-        self.pos_dictionnaire = list(donnees_carte["dictionnaire"]["position"])
         self.pos_selecteur = list(donnees_armoire["casier_depart"])
-        self.objet_transporte = None
 
-        # Informations publiques (sans la grille ni les objets !) destinées au robot
-        self.infos_publiques_carte = {
+        # Données filtrées transmises au Robot (SANS "grille" ni "objet")
+        self.carte_publique = {
             "dimensions": donnees_carte["dimensions"],
             "depart_robot": list(donnees_carte["depart_robot"]),
             "armoire": {"position": list(donnees_carte["armoire"]["position"])},
@@ -42,7 +41,7 @@ class Simulateur:
                 for r in donnees_carte["residents"]
             ],
         }
-        self.infos_publiques_armoire = {
+        self.armoire_publique = {
             "emotions": list(donnees_armoire["emotions"]),
             "intensites": list(donnees_armoire["intensites"]),
             "casier_depart": list(donnees_armoire["casier_depart"]),
@@ -54,11 +53,11 @@ class Simulateur:
             equipe=equipe,
         )
 
-    def _est_adjacent(self, pos1, pos2):
+    def est_adjacent(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1]) == 1
 
     def percevoir(self):
-        """Renvoie les 4 cases adjacentes et le contenu du casier si devant l'armoire."""
+        """Renvoie les 4 cases adjacentes (N, S, E, O) et le contenu du casier courant."""
         l, c = self.pos_robot
         perception = {}
         for direction, (dl, dc) in self.DELTAS.items():
@@ -66,13 +65,13 @@ class Simulateur:
             perception[direction] = self.TRADUCTION_CASE[symbole]
 
         contenu_casier = None
-        if self._est_adjacent(self.pos_robot, self.pos_armoire):
+        if self.est_adjacent(self.pos_robot, self.pos_armoire):
             contenu_casier = self._casiers_reels.get(tuple(self.pos_selecteur))
 
         return perception, contenu_casier
 
     def executer_action(self, num_demande, action, argument=None, commentaire=None):
-        """Enregistre le pas AVANT l'action, puis met à jour l'état du monde."""
+        """Journalise le pas AVANT l'action dans Trace, puis met à jour le monde."""
         perception, contenu_casier = self.percevoir()
 
         self.trace.ajouter_pas(
@@ -99,7 +98,3 @@ class Simulateur:
                 self.pos_selecteur = [l, (c + 1) % 8]
             elif argument == "O":
                 self.pos_selecteur = [l, (c - 1) % 8]
-        elif action == "PRENDRE":
-            self.objet_transporte = argument
-        elif action == "DONNER":
-            self.objet_transporte = None
